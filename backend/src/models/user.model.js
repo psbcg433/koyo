@@ -3,6 +3,7 @@ import validator from "validator";
 import { genrateToken, verifyToken, uploadToCloudinary, comparePassword } from "../utils/helper.js";
 import { APIError } from "../utils/helperClasses.js";
 
+
 const userSchema = new Schema({
     username: {
         type: String,
@@ -107,10 +108,6 @@ userSchema.statics.generateRefreshToken = async function (user) {
     return refreshToken;
 }
 
-// userSchema.statics.isUserExists = async function (username, email) {
-//     const user = await this.findOne({ $or: [{ username }, { email }] });
-//     return !!user;
-// }
 
 
 userSchema.statics.registerUser = async function ({ username, email, fullname, password, avatarFile }) {
@@ -173,7 +170,7 @@ userSchema.statics.loginUser = async function (identifier, password) {
     }
     const fetchedUser = user.select("-password -__v -createdAt -updatedAt")
     const accessToken = this.generateAccessToken(fetchedUser)
-    const refreshToken = this.generateAccessToken(fetchedUser._id)
+    const refreshToken = this.generateRefreshToken(fetchedUser._id)
     if (!accessToken || !refreshToken) {
         throw new APIError("Token generation failed", 500)
 
@@ -191,5 +188,50 @@ userSchema.statics.loginUser = async function (identifier, password) {
 
 }
 
+
+userSchema.statics.refreshAccessToken = async function (token) {
+    if(!token)
+    {
+        throw new APIError("Token missing",401)
+    }
+    let decodedValue;
+    try
+    {
+        decodedValue = await verifyToken(token,process.env.REFRESH_TOKEN_SECRET)
+    }
+    catch(error)
+    {
+        throw new APIError("Invalid refresh token",403)
+    }
+    const user = await this.findById(decodedValue._id)
+    if(!user || user.refreshToken !== token)
+    {
+        throw new APIError("Token has expired",403)
+    }
+    
+    const fetchedUser = user.select("-password -__v -createdAt -updatedAt")
+    const accessToken = this.generateAccessToken(fetchedUser)
+    const refreshToken = this.generateRefreshToken(fetchedUser._id)
+    if (!accessToken || !refreshToken) {
+        throw new APIError("Token generation failed", 500)
+
+    }
+    user.refreshToken = refreshToken
+    await user.save()
+    return {accessToken,refreshToken}
+}
+
+
+userSchema.statics.logoutUser = async function (userId) {
+    const user = await this.findById(userId);
+    if (!user) {
+        throw new APIError("User not found", 404);
+    }
+
+    user.refreshToken = null; 
+    await user.save();
+
+    return true;
+};
 
 export const User = mongoose.model("User", userSchema);

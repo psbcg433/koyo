@@ -26,8 +26,6 @@ class UserController {
         }
     });
 
-
-
     static loginUser = asyncHandler(
         async (req, res, next) => {
             const { identifier, password } = req.body;
@@ -41,17 +39,42 @@ class UserController {
                 maxAge: 7 * 24 * 60 * 60 * 1000,
             });
 
-            
+
             const response = new APIResponse(200, {
                 user,
                 accessToken,
-                refreshToken // Include if needed
+                refreshToken
             }, "Login successful");
 
             return res.status(response.statusCode).json(response);
         }
     )
 
+    static refreshAccessToken = asyncHandler(
+        async (req, res, next) => {
+            const token = req.cookies?.refreshToken
+            const { accessToken, refreshToken } = await User.refreshAccessToken(token)
+
+            res.cookie('refreshToken', refreshToken, {
+                httpOnly: true,
+                // secure: process.env.NODE_ENV === 'production',
+                // sameSite: 'Strict',
+                maxAge: 7 * 24 * 60 * 60 * 1000,
+            });
+
+            const response = new APIResponse(200, { accessToken }, "Token refreshed");
+            return res.status(response.statusCode).json(response);
+        }
+    )
+
+    static logoutUser = asyncHandler(async (req, res) => {
+        await User.logoutUser(req.user._id);   
+
+        res.clearCookie("refreshToken");
+        return res
+            .status(200)
+            .json(new APIResponse(200, null, "Logged out successfully"));
+    });
 }
 
 export default UserController;
