@@ -20,7 +20,7 @@ export class APIError extends Error {
 }
 
 export class APIResponse {  
-    constructor(statusCode,data,message="Success")
+    constructor(statusCode,data='',message="Success")
     {
         this.statusCode = statusCode;
         this.data = data;

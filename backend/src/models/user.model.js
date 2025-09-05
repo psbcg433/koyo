@@ -1,6 +1,6 @@
 import mongoose, { Schema } from "mongoose";
 import validator from "validator";
-import { genrateToken, verifyToken, uploadToCloudinary } from "../utils/helper.js";
+import { genrateToken, verifyToken, uploadToCloudinary, comparePassword } from "../utils/helper.js";
 import { APIError } from "../utils/helperClasses.js";
 
 const userSchema = new Schema({
@@ -145,14 +145,51 @@ userSchema.statics.registerUser = async function ({ username, email, fullname, p
 
     await user.save();
 
-    const savedUser = await this.findById(user._id).select("-password -__v -createdAt -updatedAt");
+    const savedUser = await this.findById(user._id);
 
     if (!savedUser) {
         throw new APIError("Registration failed", 500);
     }
 
-    return savedUser;
+    return true;
 };
+
+
+userSchema.statics.loginUser = async function (identifier, password) {
+    if (!identifier || !password) {
+        throw new APIError("All fields are required")
+    }
+    const user = await this.findOne(
+        {
+            $or: [{ username: identifier }, { email: identifier }]
+        }
+    )
+    if (!user) {
+        throw new APIError("Incorrect Credentials", 404)
+    }
+    const isPasswordCorrect = await comparePassword(password, user.password)
+    if (!isPasswordCorrect) {
+        throw new APIError("Incorrect Credentials", 401)
+    }
+    const fetchedUser = user.select("-password -__v -createdAt -updatedAt")
+    const accessToken = this.generateAccessToken(fetchedUser)
+    const refreshToken = this.generateAccessToken(fetchedUser._id)
+    if (!accessToken || !refreshToken) {
+        throw new APIError("Token generation failed", 500)
+
+    }
+    user.refreshToken = refreshToken
+    await user.save()
+
+
+    return {
+        user: fetchedUser,
+        accessToken,
+        refreshToken
+    }
+
+
+}
 
 
 export const User = mongoose.model("User", userSchema);
