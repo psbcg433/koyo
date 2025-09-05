@@ -34,10 +34,9 @@ class UserController {
 
             const { user, accessToken, refreshToken } = await User.loginUser(identifier, password);
 
-            // ✅ Set HTTP-only cookie
             res.cookie('refreshToken', refreshToken, {
                 httpOnly: true,
-                secure: process.env.NODE_ENV === 'production',
+                // secure: process.env.NODE_ENV === 'production',
                 // sameSite: 'Strict',
                 maxAge: 7 * 24 * 60 * 60 * 1000,
             });
