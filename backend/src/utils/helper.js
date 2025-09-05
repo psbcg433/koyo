@@ -1,7 +1,7 @@
 import bcrypt from 'bcrypt';
 import cloudinary from '../config/cloudinary.config.js';
 import fs from 'fs';
-
+import jwt from 'jsonwebtoken';
 // A utility function to handle async functons in Express routes
 export function asyncHandler(fn) {
     return async function (req, res, next) {
@@ -59,5 +59,22 @@ export async function uploadToCloudinary(filePath, folder = null) {
                 console.error('Error deleting local file:', err);
             }
         });
+    }
+}
+
+
+
+// function to generate token
+export async function genrateToken(payload, secret, expiresIn = '1h') {
+    const token = await jwt.sign(payload, secret, { expiresIn: expiresIn });
+    return token;
+}
+
+export async function verifyToken(token, secret) {
+    try {
+        const decoded = await jwt.verify(token, secret);
+        return decoded;
+    } catch (error) {
+        throw new Error('Invalid token');
     }
 }

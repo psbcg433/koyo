@@ -1,6 +1,7 @@
 import mongoose, { Schema } from "mongoose";
-import jwt from "jsonwebtoken";
 import validator from "validator";
+import { genrateToken, verifyToken, uploadToCloudinary } from "../utils/helper.js";
+import { APIError } from "../utils/helperClasses.js";
 
 const userSchema = new Schema({
     username: {
@@ -73,32 +74,85 @@ const userSchema = new Schema({
     }
 );
 
-// Token generation static methods
+
+userSchema.pre('save', async function (next) {
+    if (!this.isModified('password')) return next();
+    if (!validator.isStrongPassword(this.password)) {
+        throw new Error('Please provide a stronger password (at least 6 characters, including uppercase, lowercase, number, and symbol)');
+    }
+    const saltRounds = 10;
+    this.password = await bcrypt.hash(this.password, saltRounds);
+    next();
+});
+
+
 userSchema.statics.generateAccessToken = async function (user) {
-    const token = await jwt.sign(
-        {
-            _id: user._id,
-            email: user.email,
-            username: user.username,
-            fullname: user.fullname
-        },
-        process.env.ACCESS_TOKEN_SECRET,
-        {
-            expiresIn: process.env.ACCESS_TOKEN_EXPIRY,
-        }
-    );
-    return token;
-};
+    const payload = {
+        _id: user._id,
+        username: user.username,
+        email: user.email
+    };
+
+    const accessToken = await genrateToken(payload, process.env.ACCESS_TOKEN_SECRET, process.env.ACCESS_TOKEN_EXPIRY)
+    return accessToken;
+}
 
 userSchema.statics.generateRefreshToken = async function (user) {
-    const token = await jwt.sign(
-        { _id: user._id },
-        process.env.REFRESH_TOKEN_SECRET,
-        {
-            expiresIn: process.env.REFRESH_TOKEN_EXPIRY,
-        }
-    );
-    return token;
+    const payload = {
+        _id: user._id,
+        username: user.username,
+        email: user.email
+    };
+    const refreshToken = await genrateToken(payload, process.env.REFRESH_TOKEN_SECRET, process.env.REFRESH_TOKEN_EXPIRY)
+    return refreshToken;
+}
+
+// userSchema.statics.isUserExists = async function (username, email) {
+//     const user = await this.findOne({ $or: [{ username }, { email }] });
+//     return !!user;
+// }
+
+
+userSchema.statics.registerUser = async function ({ username, email, fullname, password, avatarFile }) {
+    if (!username || !email || !fullname || !password || !avatarFile) {
+        throw new APIError("All fields are required", 400);
+    }
+
+    const isUserExists = await this.findOne({
+        $or: [{ username }, { email }]
+    });
+
+    if (isUserExists) {
+        throw new APIError("Email or Username already in use", 409);
+    }
+
+    let avatarUrl;
+
+    try {
+        const { secure_url } = await uploadToCloudinary(avatarFile.path, 'avatars');
+        avatarUrl = secure_url;
+    } catch (err) {
+        throw new APIError("Avatar upload failed", 500);
+    }
+
+    const user = new this({
+        username,
+        email,
+        fullname,
+        password,
+        avatar: avatarUrl
+    });
+
+    await user.save();
+
+    const savedUser = await this.findById(user._id).select("-password -__v -createdAt -updatedAt");
+
+    if (!savedUser) {
+        throw new APIError("Registration failed", 500);
+    }
+
+    return savedUser;
 };
+
 
 export const User = mongoose.model("User", userSchema);
